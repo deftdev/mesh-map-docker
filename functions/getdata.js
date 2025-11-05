@@ -2,7 +2,6 @@ export async function onRequest(context) {
   var responseData = {
     samples: [
       { id: 0, lat: 47.8033, lon: -122.0427, heard: "2b" },
-      { id: 1, lat: 47.7157, lon: -122.0886, heard: "75" },
       { id: 4, lat: 47.8020, lon: -122.1116, heard: null },
       { id: 5, lat: 47.7888, lon: -122.0790, heard: null },
       { id: 6, lat: 47.7720, lon: -122.0799, heard: null },
@@ -27,7 +26,6 @@ export async function onRequest(context) {
     ],
     edges: [
       "0,3",
-      "1,20",
       "8,2",
       "8,2",
       "9,10",
