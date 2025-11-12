@@ -25,8 +25,9 @@
 
 <body class="attribution-tweak">
   <div id="map"></div>
-  <script src="content/code.js"></script>
-  <script>
+  <script type="module" src="content/code.js"></script>
+  <script type="module">
+    import { refreshCoverage } from './content/code.js';
     refreshCoverage();
   </script>
 </body>

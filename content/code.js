@@ -1,3 +1,5 @@
+import { haversineMiles } from './shared.js'
+
 // Global Init
 const map = L.map('map', { worldCopyJump: true }).setView([47.76837, -122.06078], 10);
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -44,10 +46,29 @@ function repeaterMarker(r) {
   const marker = L.marker([r.lat, r.lon], { icon: icon });
   const details = [
     `<strong>${escapeHtml(r.name)} [${r.id}]</strong>`,
-    `${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}`
+    `${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}`,
+    `${new Date(r.time).toLocaleString()}`
   ].join('<br/>');
   marker.bindPopup(details, { maxWidth: 320 });
   return marker;
+}
+
+function getNearest(fromPos, toPosList) {
+  if (toPosList.length === 1) {
+    return toPosList[0];
+  }
+
+  let minDist = haversineMiles(fromPos, toPosList[0]);
+  let minTo = toPosList[0];
+
+  toPosList.forEach(to => {
+    const dist = haversineMiles(fromPos, to);
+    if (dist < minDist) {
+      minTo = to;
+    }
+  });
+
+  return minTo;
 }
 
 function renderNodes(nodes) {
@@ -55,7 +76,7 @@ function renderNodes(nodes) {
   repeaterLayer.clearLayers();
   edgeLayer.clearLayers();
   const outEdges = [];
-  const idToRepeater = new Map();
+  const idToRepeaters = new Map();
 
   nodes.samples.forEach(s => {
     sampleLayer.addLayer(sampleMarker(s));
@@ -69,25 +90,27 @@ function renderNodes(nodes) {
     r.path.forEach(p => {
       outEdges.push({ id: p, pos: [r.lat, r.lon] });
     });
-    idToRepeater.set(r.id, [r.lat, r.lon]);
+    const repeaterList = idToRepeaters.get(r.id) ?? [];
+    repeaterList.push([r.lat, r.lon]);
+    idToRepeaters.set(r.id, repeaterList);
   });
 
-  // TODO: for dupe repeater ids, pick the closest.
   // TODO: render paths only when hovered over a sample.
 
   outEdges.forEach(edge => {
-    const to = idToRepeater.get(edge.id);
+    const toList = idToRepeaters.get(edge.id);
 
-    if (to === undefined) {
+    if (toList === undefined) {
       console.log(`Missing repeater ${edge.id}`);
     } else {
       const from = edge.pos;
+      const to = getNearest(from, toList);
       L.polyline([from, to], { weight: 2, opacity: 0.8, dashArray: '1,6' }).addTo(edgeLayer);
     }
   });
 }
 
-async function refreshCoverage() {
+export async function refreshCoverage() {
   const endpoint = "/get-nodes";
   const resp = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
 
