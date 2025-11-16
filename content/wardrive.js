@@ -38,6 +38,7 @@ const state = {
   autoMode: false,
   autoTimerId: null,
   lastSample: null, // { lat, lon, timestamp }
+  wakeLock: null,
   log: [],
 };
 
@@ -145,6 +146,40 @@ function getCurrentPosition() {
       }
     );
   });
+}
+
+// --- WakeLock helpers ---
+async function acquireWakeLock() {
+  // Bluefy-specfic -- it's a bit better when available.
+  if ('setScreenDimEnabled' in navigator.bluetooth) {
+    navigator.bluetooth.setScreenDimEnabled(false);
+  } else {
+    try {
+      if ('wakeLock' in navigator) {
+        state.wakeLock = await navigator.wakeLock.request('screen');
+        console.log('navigator.wakeLock acquired');
+
+        state.wakeLock.addEventListener('release',
+          () => console.log('navigator.wakeLock released'));
+
+      } else {
+        console.log('navigator.wakeLock not supported');
+      }
+    } catch (err) {
+      console.error(`Could not obtain wake lock: ${err.name}, ${err.message}`);
+    }
+  }
+}
+
+async function releaseWakeLock() {
+  if ('setScreenDimEnabled' in navigator.bluetooth) {
+    navigator.bluetooth.setScreenDimEnabled(true);
+  } else {
+    if (state.wakeLock !== null) {
+      state.wakeLock.release();
+      state.wakeLock = null;
+    }
+  }
 }
 
 // --- Wardrive channel helpers ---
@@ -476,12 +511,14 @@ sendPingBtn.addEventListener("click", () => {
   sendPing({ auto: false }).catch(console.error);
 });
 
-autoToggleBtn.addEventListener("click", () => {
+autoToggleBtn.addEventListener("click", async () => {
   if (state.autoMode) {
     stopAutoMode();
+    releaseWakeLock();
     setStatus("Auto mode stopped", "font-semibold text-slate-300");
   } else {
     startAutoMode();
+    await acquireWakeLock();
   }
 });
 
@@ -493,6 +530,27 @@ clearLogBtn.addEventListener("click", () => {
   saveLog();
   renderLog();
 });
+
+// Automatically release wake lock when the page is hidden.
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) {
+    releaseWakeLock();
+  } else if (!document.hidden && state.autoMode) {
+    await acquireWakeLock();
+  }
+});
+
+// Bluefy-specific.
+if ('bluetooth' in navigator) {
+  navigator.bluetooth.addEventListener('backgroundstatechanged',
+    (e) => {
+      const isBackground = e.detail && e.detail.isBackground;
+      if (isBackground && state.autoMode) {
+        stopAutoMode();
+        setStatus('Lost focus, Stopped');
+      }
+    });
+}
 
 export async function onLoad() {
   loadLog();
