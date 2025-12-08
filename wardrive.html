@@ -52,9 +52,10 @@
         </div>
       </section>
 
-      <!-- Wardrive controls -->
-      <section id="controls" class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-4 hidden">
+      <!-- Ping controls -->
+      <section id="controls" class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-5 hidden">
 
+        <!-- Buttons -->
         <div class="flex flex-wrap items-center gap-2">
           <button id="sendPingBtn"
             class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm font-medium disabled:opacity-40">
@@ -66,42 +67,70 @@
           </button>
         </div>
 
-        <section id="auto-controls" class="space-y-1">
-          <h2 class="text-med font-semibold">Auto Settings</h2>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="space-y-1">
-              <label class="block text-sm text-slate-300">Ping Interval</label>
-              <select id="intervalSelect"
-                class="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-1.5 text-sm">
-                <option value="0.5">Every 30 seconds</option>
-                <option value="1" selected>Every 1 minute</option>
-                <option value="2">Every 2 minutes</option>
-                <option value="5">Every 5 minutes</option>
-                <option value="10">Every 10 minutes</option>
-              </select>
-            </div>
+        <!-- Ping Mode Control -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-1">
+            <label class="block text-sm text-slate-300">Auto Ping Mode</label>
+            <select id="pingModeSelect"
+              class="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-1.5 text-sm">
+              <option value="fill" select>Fill Missing Tiles</option>
+              <option value="interval">Interval</option>
+            </select>
+          </div>
+        </div>
 
-            <div class="space-y-1">
-              <label class="block text-sm text-slate-300">Min Distance</label>
-              <select id="minDistanceSelect"
-                class="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-1.5 text-sm">
-                <option value="0.5">0.5 miles</option>
-                <option value="1" selected>1 mile</option>
-                <option value="2">2 miles</option>
-                <option value="5">5 miles</option>
-              </select>
+        <!-- Fill-Missing Controls -->
+        <!-- TODO: Map -->
+        <section id="fill-missing-controls">
+          <div class="text-sm space-y-1 text-slate-300">
+            Current Tile
+          </div>
+          <div class="grid grid-cols-2 text-sm space-y-1 text-slate-400">
+            <div>
+              Geohash: <span id="currentTileHash">none</span>
             </div>
-
-            <div class="space-y-1">
-              <label class="block text-sm text-slate-300">Last Ping</label>
-              <div id="lastSampleInfo" class="text-xs text-slate-400">
-                None
-              </div>
+            <div>
+              Needs Ping: <span id="currentNeedsPing">n/a</span>
             </div>
           </div>
         </section>
 
-        <section class="pt-2">
+        <!-- Interval Controls -->
+        <section id="interval-controls" class="grid grid-cols-2 gap-4 hidden">
+          <div class="space-y-1">
+            <label class="block text-sm text-slate-300">Ping Interval</label>
+            <select id="intervalSelect"
+              class="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-1.5 text-sm">
+              <option value="0.5">Every 30 seconds</option>
+              <option value="1" selected>Every 1 minute</option>
+              <option value="2">Every 2 minutes</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="10">Every 10 minutes</option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-sm text-slate-300">Min Distance</label>
+            <select id="minDistanceSelect"
+              class="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-1.5 text-sm">
+              <option value="0.5">0.5 miles</option>
+              <option value="1" selected>1 mile</option>
+              <option value="2">2 miles</option>
+              <option value="5">5 miles</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- Last Ping -->
+        <div class="space-y-1">
+          <label class="block text-sm text-slate-300">Last Ping</label>
+          <div id="lastSampleInfo" class="text-xs text-slate-400">
+            None
+          </div>
+        </div>
+
+        <!-- Ignore Repeater -->
+        <section>
           <div class="space-y-1">
             <div class="text-xs italic text-slate-400">
               If you're using a mobile repeater, ignore its id.

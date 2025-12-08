@@ -7,6 +7,11 @@ export function sampleKey(lat, lon) {
   return geo.encode(lat, lon, 8);
 }
 
+// Generates the key for a coverage tile given lat/lon.
+export function coverageKey(lat, lon) {
+  return geo.encode(lat, lon, 6);
+}
+
 // Gets [lat, lon] for the specified hash.
 export function posFromHash(hash) {
   const { latitude: lat, longitude: lon } = geo.decode(hash);

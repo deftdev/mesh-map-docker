@@ -338,6 +338,9 @@ var import_ngeohash = __toESM(require_main());
 function sampleKey(lat, lon) {
   return import_ngeohash.default.encode(lat, lon, 8);
 }
+function coverageKey(lat, lon) {
+  return import_ngeohash.default.encode(lat, lon, 6);
+}
 function posFromHash(hash) {
   const { latitude: lat, longitude: lon } = import_ngeohash.default.decode(hash);
   return [lat, lon];
@@ -420,6 +423,7 @@ var export_geo = import_ngeohash.default;
 export {
   ageInDays,
   centerPos,
+  coverageKey,
   fromTruncatedTime,
   export_geo as geo,
   haversineMiles,

@@ -1,66 +1,109 @@
 import * as util from '../content/shared.js';
 
+async function dedupeCoverageValues() {
+  try {
+    const values = await store.get(key.name, "json");
+    const groups = Object.groupBy(values, ({ time }) => time);
+
+    // If there are dupes, there will be fewer groups than values.
+    const groupCount = Object.keys(groups).length
+    const hasDupes = groupCount !== values.length
+
+    const metadata = key.metadata;
+    const samplesCount = metadata.heard + metadata.lost;
+    const hasMismatchCounts = groupCount !== samplesCount;
+
+    if (!(hasDupes || hasMismatchCounts)) {
+      // All good.
+      return;
+    }
+
+    // Take the first item from each group.
+    const newValue = Object.entries(groups).map(
+      ([k, v]) => {
+        return { time: k, path: v[0].path };
+      });
+
+    // Fixup metadata counts.
+    metadata.heard = 0;
+    metadata.lost = 0;
+    metadata.lastHeard = 0
+    newValue.forEach(s => {
+      const heard = s.path.length > 0
+      metadata.heard += heard ? 1 : 0;
+      metadata.lost += !heard ? 1 : 0;
+      metadata.lastHeard = Math.max(metadata.lastHeard, s.time);
+    });
+
+    const newValueJson = JSON.stringify(newValue)
+    console.log(`Putting ${key.name} ${newValueJson}`);
+    await store.put(key.name, newValueJson, {
+      metadata: key.metadata
+    });
+    result.coverage_deduped++;
+    
+  } catch (e) {
+    console.log(`Error handling ${key}: ${e}`);
+  }
+}
+
+async function deleteOutOfRange(store, hash) {
+  const pos = util.posFromHash(hash);
+  if (!util.isValidLocation(pos)) {
+    console.log(`Coverage ${hash} is out of range`);
+    await store.delete(hash);
+    return 1;
+  }
+
+  return 0;
+}
+
 async function cleanCoverage(context, result) {
   const store = context.env.COVERAGE;
   let cursor = null;
 
   result.coverage_deduped = 0;
+  result.coverage_out_of_range = 0;
 
   do {
     const coverage = await store.list({ cursor: cursor });
     cursor = coverage.cursor ?? null;
 
     for (const key of coverage.keys) {
-      try {
-        const values = await store.get(key.name, "json");
-        const groups = Object.groupBy(values, ({ time }) => time);
-
-        // If there are dupes, there will be fewer groups than values.
-        const groupCount = Object.keys(groups).length
-        const hasDupes = groupCount !== values.length
-
-        const metadata = key.metadata;
-        const samplesCount = metadata.heard + metadata.lost;
-        const hasMismatchCounts = groupCount !== samplesCount;
-
-        if (!(hasDupes || hasMismatchCounts)) {
-          // All good.
-          continue;
-        }
-
-        // Take the first item from each group.
-        const newValue = Object.entries(groups).map(
-          ([k, v]) => {
-            return { time: k, path: v[0].path };
-          });
-
-        // Fixup metadata counts.
-        metadata.heard = 0;
-        metadata.lost = 0;
-        metadata.lastHeard = 0
-        newValue.forEach(s => {
-          const heard = s.path.length > 0
-          metadata.heard += heard ? 1 : 0;
-          metadata.lost += !heard ? 1 : 0;
-          metadata.lastHeard = Math.max(metadata.lastHeard, s.time);
-        });
-
-        const newValueJson = JSON.stringify(newValue)
-        console.log(`Putting ${key.name} ${newValueJson}`);
-        await store.put(key.name, newValueJson, {
-          metadata: key.metadata
-        });
-        result.coverage_deduped++;
-        
-      } catch (e) {
-        console.log(`Error handling ${key}: ${e}`);
-      }
+      result.coverage_out_of_range += await deleteOutOfRange(store, key.name);
     }
   } while (cursor !== null);
 }
 
+async function deleteBadSample(store, key) {
+  // Service was messed up for this range.
+  const start = new Date("12/06/2025 07:00:00");
+  const end = new Date("12/07/2025 16:30:00");
+  const time = key.metadata.time ?? 0;
+  if (start < time && time < end) {
+    await store.delete(key.name);
+    return 1;
+  }
+
+  return 0;
+}
+
 async function cleanSamples(context, result) {
   // This should mostly be done by consolidate.js
+
+  const store = context.env.SAMPLES;
+  let cursor = null;
+
+  result.sample_deleted = 0;
+
+  do {
+    const samples = await store.list({ cursor: cursor });
+    cursor = samples.cursor ?? null;
+
+    for (const key of samples.keys) {
+      result.sample_deleted += await deleteBadSample(store, key);
+    }
+  } while (cursor !== null);
 }
 
 function overlaps(a, b) {

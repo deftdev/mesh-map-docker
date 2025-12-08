@@ -1,22 +1,32 @@
 // Returns the geohashes all coverage cells with recent data.
 import * as util from '../content/shared.js';
 
-const LOOK_BACK_DAYS = 2;
+const LOOK_BACK_DAYS = 20;
 
 export async function onRequest(context) {
-  const store = context.env.COVERAGE;
-  const result = [];
+  const coverageStore = context.env.COVERAGE;
+  const sampleStore = context.env.SAMPLES;
+  const covered = new Set();
   let cursor = null;
 
   do {
-    const coverage = await store.list({ cursor: cursor });
+    const coverage = await coverageStore.list({ cursor: cursor });
     cursor = coverage.cursor ?? null;
     coverage.keys.forEach(c => {
       const lastHeard = c.metadata.lastHeard ?? 0;
       if (util.ageInDays(lastHeard) < LOOK_BACK_DAYS)
-        result.push(c.name);
+        covered.add(c.name);
       });
   } while (cursor !== null)
 
-  return new Response(JSON.stringify(result));
+  do {
+    const samplesList = await sampleStore.list({ cursor: cursor });
+    cursor = samplesList.cursor ?? null;
+    samplesList.keys.forEach(s => {
+      // All samples are assumed recent.
+      covered.add(s.name.substring(0, 6));
+    });
+  } while (cursor !== null)
+
+  return new Response(JSON.stringify(Array.from(covered)));
 }

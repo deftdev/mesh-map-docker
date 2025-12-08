@@ -1,5 +1,9 @@
 import { WebBleConnection, Constants } from "/content/mc/index.js";
-import { isValidLocation, haversineMiles } from "/content/shared.js";
+import {
+  coverageKey,
+  haversineMiles,
+  isValidLocation
+} from "/content/shared.js";
 
 // --- DOM helpers ---
 const $ = id => document.getElementById(id);
@@ -7,7 +11,11 @@ const statusEl = $("status");
 const deviceNameEl = $("deviceName");
 const channelInfoEl = $("channelInfo");
 const lastSampleInfoEl = $("lastSampleInfo");
+const currentTileEl = $("currentTileHash");
+const currentNeedsPingEl = $("currentNeedsPing");
 const controlsSection = $("controls");
+const fillMissingSection = $("fill-missing-controls");
+const intervalSection = $("interval-controls");
 const ignoredRepeaterId = $("ignoredRepeaterId");
 const logBody = $("logBody");
 const debugConsole = $("debugConsole");
@@ -17,6 +25,7 @@ const disconnectBtn = $("disconnectBtn");
 const sendPingBtn = $("sendPingBtn");
 const autoToggleBtn = $("autoToggleBtn");
 const clearLogBtn = $("clearLogBtn");
+const pingModeSelect = $("pingModeSelect");
 const intervalSelect = $("intervalSelect");
 const minDistanceSelect = $("minDistanceSelect");
 const ignoredRepeaterBtn = $("ignoredRepeaterBtn");
@@ -26,9 +35,7 @@ const wardriveChannelName = "#wardrive";
 function setStatus(text, color = null) {
   statusEl.textContent = text;
   log(`status: ${text}`);
-  if (color) {
-    statusEl.className = "font-semibold " + color;
-  }
+  statusEl.className = "font-semibold " + (color ?? "");
 }
 
 function log(msg) {
@@ -47,11 +54,13 @@ const state = {
   connection: null,
   selfInfo: null,
   wardriveChannel: null,
-  autoMode: false,
+  pingMode: "fill",
+  running: false,
   autoTimerId: null,
   lastSample: null, // { lat, lon, timestamp }
   wakeLock: null,
   ignoredId: null, // Allows a repeater to be ignored.
+  coveredTiles: new Set(),
   log: [],
 };
 
@@ -299,7 +308,7 @@ async function ensureWardriveChannel() {
 // --- Ping logic ---
 async function sendPing({ auto = false } = {}) {
   if (!state.connection) {
-    setStatus("Not connected", "font-semibold text-red-300");
+    setStatus("Not connected", "text-red-300");
     return;
   }
 
@@ -309,13 +318,13 @@ async function sendPing({ auto = false } = {}) {
     channel = await ensureWardriveChannel();
   } catch (e) {
     console.warn(`Channel "${wardriveChannelName}" not available`, e);
-    setStatus(`No "${wardriveChannelName}" channel`, "font-semibold text-amber-300");
+    setStatus(`No "${wardriveChannelName}" channel`, "text-amber-300");
     return;
   }
 
   setStatus(
     auto ? "Auto ping: getting location…" : "Getting location…",
-    "font-semibold text-sky-300");
+    "text-sky-300");
 
   // Get the position.
   let pos;
@@ -323,7 +332,7 @@ async function sendPing({ auto = false } = {}) {
     pos = await getCurrentPosition();
   } catch (e) {
     console.error("Could not get location", e);
-    setStatus("Could not get location", "font-semibold text-red-300");
+    setStatus("Could not get location", "text-red-300");
     addLogEntry({
       timestamp: new Date().toISOString(),
       mode: auto ? "auto" : "manual",
@@ -336,29 +345,44 @@ async function sendPing({ auto = false } = {}) {
 
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
-
-  // Ensure minimum distance met for auto ping.
+  const coverageTileId = coverageKey(lat, lon);
   let distanceMilesValue = null;
-  const minMiles = getMinDistanceMiles();
-  if (auto && state.lastSample && minMiles > 0) {
-    distanceMilesValue = haversineMiles(
-      [state.lastSample.lat, state.lastSample.lon], [lat, lon]);
-    if (distanceMilesValue < minMiles) {
-      log(`Min distance not met ${distanceMilesValue}, skipping.`);
-      setStatus("Skipped ping", "font-semibold text-amber-300");
-      addLogEntry({
-        timestamp: new Date().toISOString(),
-        lat,
-        lon,
-        mode: "auto",
-        distanceMiles: distanceMilesValue,
-        skipped: true,
-        sentToMesh: false,
-        sentToService: false,
-      });
+
+  currentTileEl.innerText = coverageTileId;
+
+  if (state.pingMode === "interval") {
+    // Ensure minimum distance met for interval auto ping.
+    const minMiles = getMinDistanceMiles();
+    if (auto && state.lastSample && minMiles > 0) {
+      distanceMilesValue = haversineMiles(
+        [state.lastSample.lat, state.lastSample.lon], [lat, lon]);
+      if (distanceMilesValue < minMiles) {
+        log(`Min distance not met ${distanceMilesValue}, skipping.`);
+        setStatus("Skipped ping", "text-amber-300");
+        addLogEntry({
+          timestamp: new Date().toISOString(),
+          lat,
+          lon,
+          mode: "auto",
+          distanceMiles: distanceMilesValue,
+          skipped: true,
+          sentToMesh: false,
+          sentToService: false,
+        });
+        return;
+      }
+    }
+  } else {
+    // Ensure ping is needed in the current tile.
+    const needsPing = !state.coveredTiles.has(coverageTileId);
+    currentNeedsPingEl.innerText = needsPing ? "yes" : "no";
+    if (auto && !needsPing) {
+      setStatus("No ping needed", "text-amber-300");
       return;
     }
   }
+
+  setStatus("Sending ping…", "text-sky-300");
 
   let text = `${lat.toFixed(4)} ${lon.toFixed(4)}`;
   if (state.ignoredId !== null) text += ` ${state.ignoredId}`;
@@ -373,7 +397,7 @@ async function sendPing({ auto = false } = {}) {
     log("Sent MeshCore wardrive ping:", text);
   } catch (e) {
     console.error("Mesh send failed", e);
-    setStatus("Mesh send failed", "font-semibold text-red-300");
+    setStatus("Mesh send failed", "text-red-300");
     notes = "Mesh Fail: " + e.message;
   }
 
@@ -388,7 +412,7 @@ async function sendPing({ auto = false } = {}) {
       sentToService = true;
     } catch (e) {
       console.error("Service POST failed", e);
-      setStatus("Web send failed", "font-semibold text-red-300");
+      setStatus("Web send failed", "text-red-300");
       notes = "Web Fail: " + e.message;
     }
 
@@ -396,6 +420,7 @@ async function sendPing({ auto = false } = {}) {
     // the new 'last sample' to avoid spam.
     const nowIso = new Date().toISOString();
     state.lastSample = { lat, lon, timestamp: nowIso };
+    state.coveredTiles.add(coverageTileId);
     updateLastSampleInfo();
   }
 
@@ -414,13 +439,13 @@ async function sendPing({ auto = false } = {}) {
   addLogEntry(entry);
 
   if (sentToMesh) {
-    setStatus(auto ? "Auto ping sent" : "Ping sent", "font-semibold text-emerald-300");
+    setStatus(auto ? "Auto ping sent" : "Ping sent", "text-emerald-300");
   }
 }
 
 // --- Auto mode ---
 function updateAutoButton() {
-  if (state.autoMode) {
+  if (state.running) {
     autoToggleBtn.textContent = "Stop Auto Ping";
     autoToggleBtn.classList.remove("bg-indigo-600", "hover:bg-indigo-500");
     autoToggleBtn.classList.add("bg-amber-600", "hover:bg-amber-500");
@@ -431,16 +456,17 @@ function updateAutoButton() {
   }
 }
 
-function stopAutoMode() {
+function stopAutoPing() {
   if (state.autoTimerId != null) {
     clearInterval(state.autoTimerId);
     state.autoTimerId = null;
   }
-  state.autoMode = false;
+  state.running = false;
   updateAutoButton();
+  releaseWakeLock();
 }
 
-function startAutoMode() {
+async function startAutoPing() {
   if (!state.connection) {
     alert("Connect to a MeshCore device first.");
     return;
@@ -452,19 +478,33 @@ function startAutoMode() {
     return;
   }
 
-  stopAutoMode();
+  stopAutoPing();
 
-  state.autoMode = true;
+  state.running = true;
   updateAutoButton();
 
-  const intervalMs = minutes * 60 * 1000;
-  setStatus("Auto mode started", "font-semibold text-emerald-300");
+  let intervalMs = 10 * 1000;
+  if (state.pingMode === "interval") {
+    intervalMs = minutes * 60 * 1000;
+  } else {
+    const resp = await fetch("/get-wardrive-coverage");
+    if (!resp.ok)
+      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+  
+    const coveredTiles = (await resp.json()) ?? [];
+    log(`Got ${coveredTiles.length} covered tiles from service.`);
+    coveredTiles.forEach(x => state.coveredTiles.add(x));
+  }
+
+  setStatus("Auto mode started", "text-emerald-300");
 
   // Send first ping immediately, then on interval.
   sendPing({ auto: true }).catch(console.error);
   state.autoTimerId = setInterval(() => {
     sendPing({ auto: true }).catch(console.error);
   }, intervalMs);
+
+  await acquireWakeLock();
 }
 
 // --- Connection handling ---
@@ -483,7 +523,7 @@ async function handleConnect() {
     return;
   }
 
-  setStatus("Connecting…", "font-semibold text-sky-300");
+  setStatus("Connecting…", "text-sky-300");
   connectBtn.disabled = true;
 
   try {
@@ -494,7 +534,7 @@ async function handleConnect() {
     connection.on("disconnected", onDisconnected);
   } catch (e) {
     console.error("Failed to open BLE connection", e);
-    setStatus("Failed to connect", "font-semibold text-red-300");
+    setStatus("Failed to connect", "text-red-300");
     connectBtn.disabled = false;
   }
 }
@@ -510,7 +550,7 @@ async function handleDisconnect() {
 }
 
 async function onConnected() {
-  setStatus("Connected (syncing…)", "font-semibold text-emerald-300");
+  setStatus("Connected (syncing…)", "text-emerald-300");
   disconnectBtn.disabled = false;
   connectBtn.disabled = true;
   controlsSection.classList.remove("hidden");
@@ -529,7 +569,7 @@ async function onConnected() {
       : "Device connected";
     setStatus(
       `Connected to ${selfInfo?.name ?? "MeshCore"}`,
-      "font-semibold text-emerald-300"
+      "text-emerald-300"
     );
 
     // Try to ensure channel exists.
@@ -540,13 +580,13 @@ async function onConnected() {
     }
   } catch (e) {
     console.error("Error during initial sync", e);
-    setStatus("Connected, but failed to init", "font-semibold text-amber-300");
+    setStatus("Connected, but failed to init", "text-amber-300");
     await handleDisconnect();
   }
 }
 
 function onDisconnected() {
-  stopAutoMode();
+  stopAutoPing();
 
   deviceNameEl.textContent = "";
   channelInfoEl.textContent = "";
@@ -558,7 +598,7 @@ function onDisconnected() {
   state.wardriveChannel = null;
 
   log("Disconnected");
-  setStatus("Disconnected", "font-semibold text-red-300");
+  setStatus("Disconnected", "text-red-300");
 }
 
 // --- Event bindings ---
@@ -575,13 +615,29 @@ sendPingBtn.addEventListener("click", () => {
 });
 
 autoToggleBtn.addEventListener("click", async () => {
-  if (state.autoMode) {
-    stopAutoMode();
-    releaseWakeLock();
-    setStatus("Auto mode stopped", "font-semibold text-slate-300");
+  if (state.running) {
+    stopAutoPing();
+    setStatus("Auto mode stopped", "text-slate-300");
   } else {
-    startAutoMode();
-    await acquireWakeLock();
+    await startAutoPing();
+  }
+});
+
+pingModeSelect.addEventListener("change", async () => {
+  const pingMode = pingModeSelect.value;
+
+  if (state.pingMode === pingMode) {
+    return;
+  }
+
+  stopAutoPing();
+  state.pingMode = pingMode;
+  if (pingMode === "interval") {
+    fillMissingSection.classList.add("hidden");
+    intervalSection.classList.remove("hidden");
+  } else {
+    fillMissingSection.classList.remove("hidden");
+    intervalSection.classList.add("hidden");
   }
 });
 
@@ -600,7 +656,7 @@ clearLogBtn.addEventListener("click", () => {
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden) {
     releaseWakeLock();
-  } else if (!document.hidden && state.autoMode) {
+  } else if (!document.hidden && state.running) {
     await acquireWakeLock();
   }
 });
@@ -611,9 +667,9 @@ if ('bluetooth' in navigator) {
     (e) => {
       log(JSON.stringify(e, 2));
       const isBackground = e.target.value;
-      if (isBackground == true && state.autoMode) {
-        stopAutoMode();
-        setStatus('Lost focus, Stopped');
+      if (isBackground == true && state.running) {
+        stopAutoPing();
+        setStatus('Lost focus, Stopped', 'text-amber-300');
       }
     });
 }
