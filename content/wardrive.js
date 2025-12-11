@@ -49,7 +49,9 @@ const currentLocMarker = L.circleMarker([0, 0], {
   color: "white",
   fillColor: "#69DBFE",
   fillOpacity: .9,
-  className: "shadow-sm"
+  className: "shadow-sm",
+  zIndexOffset: 1000, // Always on top.
+  pane: "markerPane"
 }).addTo(map);
 
 // Map controls
@@ -57,13 +59,25 @@ const mapControl = L.control({ position: 'bottomleft' });
 mapControl.onAdd = m => {
   const div = L.DomUtil.create('div', 'leaflet-control');
   div.innerHTML = `
-    <button class="px-2 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-md font-medium shadow-sm" id="followBtn">🧭</button>
+    <div class="flex items-center gap-3">
+      <button class="px-2 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-md font-medium shadow-sm" id="followBtn">🧭</button>
+      <button class="px-2 py-1.5 rounded-lg bg-orange-100 hover:bg-orange-300 text-md font-medium shadow-sm" id="clearBtn">🗑️</button>
+    </div>
   `;
 
   div.querySelector("#followBtn")
     .addEventListener("click", () => {
       state.following = !state.following;
       updateFollowButton();
+    });
+
+  div.querySelector("#clearBtn")
+    .addEventListener("click", () => {
+      if (confirm("Clear ping history?")) {
+        pingLayer.clearLayers();
+        state.pings = [];
+        // TODO: localstorage
+      }
     });
 
   // Don’t let clicks on the control bubble up and pan/zoom the map.
@@ -103,6 +117,7 @@ const state = {
   autoTimerId: null,
   wakeLock: null,
   ignoredId: null, // Allows a repeater to be ignored.
+  pings: [], // TODO: store in local storage.
   tiles: new Map(),
   following: true,
   locationTimer: null,
@@ -125,9 +140,11 @@ function mergeCoverage(id, value) {
   prev.a = Math.min(value.a, prev.a);
 }
 
-async function refreshCoverage() {
+async function refreshCoverage(tileId = null) {
   try {
-    const resp = await fetch("/get-wardrive-coverage");
+    let url = "/get-wardrive-coverage";
+    if (tileId) url += `?p=${tileId}`;
+    const resp = await fetch(url);
     const coverage = (await resp.json()) ?? [];
     log(`Got ${coverage.length} coverage tiles from service.`);
     coverage.forEach(([id, val]) => mergeCoverage(id, val));
@@ -153,6 +170,8 @@ function getCoverageBoxMarker(tileId, info) {
 
 function addCoverageBox(tileId) {
   const info = state.tiles.get(tileId);
+
+  // Remove the existing marker, if any.
   if (info.marker) {
     coverageLayer.removeLayer(info.marker);
   }
@@ -165,6 +184,9 @@ function redrawCoverage() {
   coverageLayer.clearLayers();
   state.tiles.keys().forEach(addCoverageBox);
 }
+
+// --- Ping markers ---
+// TODO
 
 // --- Ignored Id ---
 function loadIgnoredId() {
@@ -220,9 +242,7 @@ async function updateCurrentPosition() {
   const lon = pos.coords.longitude;
   state.currentPos = [lat, lon];
 
-  currentLocMarker
-    .setLatLng(state.currentPos)
-    .bringToFront();
+  currentLocMarker.setLatLng(state.currentPos);
 
   if (state.following)
     map.panTo(state.currentPos);
@@ -420,10 +440,18 @@ async function sendPing({ auto = false } = {}) {
     setStatus("Web send failed", "text-red-300");
   }
 
-  mergeCoverage(tileId, { h: 0, a: 0 });
+  // Update the tile locally immediately.
+  // Setting "age" to the cutoff so it stops getting pinged,
+  // but will be overwritten with the right value.
+  mergeCoverage(tileId, { h: 0, a: refreshTileAge });
   addCoverageBox(tileId);
-  // TODO: start background fetch to see if heard
-  // and actually update the tile then.
+
+  // Queue a tile update from the service.
+  // The mesh+MQTT+service is pretty slow so give it a few seconds to process.
+  setTimeout(async () => {
+    await refreshCoverage(tileId);
+    addCoverageBox(tileId);
+  }, 3000);
 }
 
 // --- UI ---

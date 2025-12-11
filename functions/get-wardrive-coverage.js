@@ -24,11 +24,13 @@ function addItem(map, id, heard, time) {
 export async function onRequest(context) {
   const coverageStore = context.env.COVERAGE;
   const sampleStore = context.env.SAMPLES;
+  const url = new URL(context.request.url);
+  const prefix = url.searchParams.get('p');
   const tiles = new Map();
   let cursor = null;
 
   do {
-    const coverage = await coverageStore.list({ cursor: cursor });
+    const coverage = await coverageStore.list({ prefix: prefix, cursor: cursor });
     cursor = coverage.cursor ?? null;
     coverage.keys.forEach(c => {
       const id = c.name;
@@ -39,7 +41,7 @@ export async function onRequest(context) {
   } while (cursor !== null)
 
   do {
-    const samplesList = await sampleStore.list({ cursor: cursor });
+    const samplesList = await sampleStore.list({ prefix: prefix, cursor: cursor });
     cursor = samplesList.cursor ?? null;
     samplesList.keys.forEach(s => {
       const id = s.name.substring(0, 6);
