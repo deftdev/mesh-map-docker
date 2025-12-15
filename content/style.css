@@ -30,8 +30,8 @@ body,
 }
 
 .dimmed-path {
-  stroke: #dddddd !important;
-  fill-opacity: 0.15 !important;
+  opacity: 0.5 !important;
+  fill-opacity: 0.25 !important;
 }
 
 #map {
