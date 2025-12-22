@@ -25,7 +25,7 @@ export async function onRequest(context) {
       const item = {
         id: c.name,
         obs: c.metadata.observed ?? c.metadata.heard ?? 0,
-        rcv: c.metadata.heard ?? 0,
+        hrd: c.metadata.heard ?? 0,
         lost: c.metadata.lost ?? 0,
         ut: util.truncateTime(updated),
         lht: util.truncateTime(lastHeard),

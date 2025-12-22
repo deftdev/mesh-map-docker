@@ -143,7 +143,7 @@ const state = {
   autoTimerId: null,
   wakeLock: null,
   ignoredId: null, // Allows a repeater to be ignored.
-  pings: [], // { hash: 8-char, heard: Bool }
+  pings: [],
   tiles: new Map(),
   following: true,
   locationTimer: null,

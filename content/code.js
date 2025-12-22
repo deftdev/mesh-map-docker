@@ -1,6 +1,7 @@
 import {
   ageInDays,
   centerPos,
+  definedOr,
   geo,
   haversineMiles,
   maxDistanceMiles,
@@ -54,7 +55,10 @@ mapControl.onAdd = m => {
           <select id="coverage-colormode-select">
             <option value="simple" title="Green for heard, Red for lost" selected>Simple</option>
             <option value="effective" title="Darker is confidence of message success or fail">Effective Coverage</option>
-            <option value="heardPct" title="Darker is higher success rate">Heard %</option>
+            <option value="observedPct" title="Darker is higher observed rate">Observed %</option>
+            <option value="heardPct" title="Darker is higher heard rate">Heard %</option>
+            <option value="notRepeated" title="Darker is high heard to observed ratio.">Heard, Not Repeated</option>
+            <option value="lastObserved" title="Darker is more recently observed">Last Observed</option>
             <option value="lastHeard" title="Darker is more recently heard">Last Heard</option>
             <option value="lastUpdated" title="Darker is more recently pinged">Last Updated</option>
             <option value="pastDay" title="Tiles updated in the past 1 day are dark">Past Day</option>
@@ -92,13 +96,13 @@ mapControl.onAdd = m => {
   `;
 
   div.querySelector("#meshMapControlsSection")
-  .addEventListener("click", () => {
-    const topRepeatersList = document.getElementById("meshMapControls");
-    if (topRepeatersList.classList.contains("hidden"))
-      topRepeatersList.classList.remove("hidden");
-    else
-      topRepeatersList.classList.add("hidden");
-  });
+    .addEventListener("click", () => {
+      const topRepeatersList = document.getElementById("meshMapControls");
+      if (topRepeatersList.classList.contains("hidden"))
+        topRepeatersList.classList.remove("hidden");
+      else
+        topRepeatersList.classList.add("hidden");
+    });
 
   div.querySelector("#coverage-colormode-select")
     .addEventListener("change", (e) => {
@@ -136,7 +140,7 @@ mapControl.onAdd = m => {
 };
 mapControl.addTo(map);
 
-const statsControl = L.control({position: 'topright'});
+const statsControl = L.control({ position: 'topright' });
 statsControl.onAdd = m => {
   const div = L.DomUtil.create('div', 'mesh-control leaflet-control');
 
@@ -165,11 +169,11 @@ statsControl.addTo(map);
 
 // Max radius circle.
 L.circle(centerPos, {
-    radius: maxDistanceMiles * 1609.34, // meters in mile.
-    color: '#a13139',
-    weight: 3,
-    fill: false
-  }).addTo(map);
+  radius: maxDistanceMiles * 1609.34, // meters in mile.
+  color: '#a13139',
+  weight: 3,
+  fill: false
+}).addTo(map);
 
 function escapeHtml(s) {
   return String(s)
@@ -179,11 +183,20 @@ function escapeHtml(s) {
 }
 
 function getCoverageStyle(coverage) {
-  const rcvColor = '#398821';
-  const missColor = '#E04748';
+  const obsColor = '#398821'; // Observed - Green
+  const hrdColor = '#FEAA2C'; // Heard - Orange
+  const missColor = '#E04748'; // Lost - Red
+
+  const color =
+    coverage.obs > 0
+      ? obsColor
+      : coverage.hrd > 0
+        ? hrdColor
+        : missColor;
+
   // Default to "simple" style.
   const style = {
-    color: coverage.rcv > 0 ?  rcvColor : missColor,
+    color: color,
     fillOpacity: 0.6,
     opacity: 0.8,
     weight: 1,
@@ -192,17 +205,41 @@ function getCoverageStyle(coverage) {
 
   switch (coloringMode) {
     case 'effective': {
-      // Hits get a little boost.
-      const combined = coverage.rcv * 0.25 - coverage.lost * 0.125;
-      style.color = combined > 0 ?  rcvColor : missColor;
+      // Hits get a little boost. Only counting actual observations.
+      const combined = coverage.obs * 0.25 - coverage.lost * 0.125;
+      style.color = combined > 0 ? obsColor : missColor;
       style.fillOpacity = Math.min(0.9, Math.abs(combined));
       break;
     }
 
+    case 'observedPct': {
+      const sampleCount = coverage.obs + coverage.lost;
+      const observedPercent = coverage.obs / sampleCount;
+      style.fillOpacity = Math.min(0.9, Math.max(0.1, observedPercent));
+      break;
+    }
+
     case 'heardPct': {
-      const sampleCount = coverage.rcv + coverage.lost;
-      const heardPercent = coverage.rcv / sampleCount;
+      const sampleCount = coverage.hrd + coverage.lost;
+      const heardPercent = coverage.hrd / sampleCount;
       style.fillOpacity = Math.min(0.9, Math.max(0.1, heardPercent));
+      break;
+    }
+
+    case 'notRepeated': {
+      const sum = coverage.obs * 3 + coverage.hrd;
+      if (sum > 0) {
+        const heardRatio = coverage.hrd / sum;
+        style.fillOpacity = Math.min(0.9, Math.max(0.1, heardRatio));
+      } else {
+        style.fillOpacity = 0.1;
+      }
+      break;
+    }
+
+    case 'lastObserved': {
+      const age = ageInDays(fromTruncatedTime(coverage.lot));
+      style.fillOpacity = Math.max(0.1, (-0.075 * age + 0.85));
       break;
     }
 
@@ -233,7 +270,8 @@ function getCoverageStyle(coverage) {
     }
 
     case 'sampleCount': {
-      const sampleCount = coverage.rcv + coverage.lost;
+      // Heard is a superset of Observed.
+      const sampleCount = coverage.hrd + coverage.lost;
       style.fillOpacity = Math.min(0.9, sigmoid(sampleCount, 0.5, 3));
     }
 
@@ -245,18 +283,20 @@ function getCoverageStyle(coverage) {
 
 function coverageMarker(coverage) {
   const [minLat, minLon, maxLat, maxLon] = geo.decode_bbox(coverage.id);
-  const totalSamples = coverage.rcv + coverage.lost;
-  const heardRatio = coverage.rcv / totalSamples;
+  const totalSamples = coverage.hrd + coverage.lost;
+  const obsRatio = coverage.obs / totalSamples;
   const updateDate = new Date(fromTruncatedTime(coverage.ut));
   const lastHeardDate = new Date(fromTruncatedTime(coverage.lht));
+  const lastObservedDate = new Date(fromTruncatedTime(coverage.lot));
   const style = getCoverageStyle(coverage);
   const rect = L.rectangle([[minLat, minLon], [maxLat, maxLon]], style);
   const details = `
     <strong>${coverage.id}</strong><br/>
-    Received: ${coverage.rcv} Lost: ${coverage.lost} (${(100 * heardRatio).toFixed(0)}%)<br/>
-    ${coverage.rcv ? `Last Received: ${lastHeardDate.toLocaleString()}<br/>` : ''}
+    Observed: ${coverage.obs} &middot; Heard: ${coverage.hrd} &middot; Lost: ${coverage.lost} (${(100 * obsRatio).toFixed(0)}%)<br/>
     Updated: ${updateDate.toLocaleString()}
-    ${coverage.rptr.size === 0 ? '' : '<br/>Repeaters: ' + coverage.rptr.join(',')}`;
+    ${coverage.hrd ? `<br/>Last Heard: ${lastHeardDate.toLocaleString()}` : ''}
+    ${coverage.obs ? `<br/>Last Observed: ${lastObservedDate.toLocaleString()}` : ''}
+    ${coverage.rptr.size > 0 ? '<br/>Repeaters: ' + coverage.rptr.join(',') : ''}`;
 
   rect.coverage = coverage;
   rect.bindPopup(details, { maxWidth: 320 });
@@ -275,7 +315,12 @@ function coverageMarker(coverage) {
 function sampleMarker(s) {
   const [lat, lon] = posFromHash(s.id);
   const path = s.path ?? [];
-  const color = path.length > 0 ? '#07ac07' : '#e96767';
+  const color =
+    s.obs
+      ? '#07ac07'    // Green
+      : path.length > 0
+        ? '#feaa2c'  // Orange
+        : '#e96767'; // Red
   const style = {
     radius: 4,
     weight: 1,
@@ -291,6 +336,7 @@ function sampleMarker(s) {
   const details = `
     ${lat.toFixed(4)}, ${lon.toFixed(4)}<br/>
     ${date.toLocaleString()}
+    ${s.snr && s.rssi ? `<br/>SNR:${s.snr}, RSSI:${s.rssi}` : ''}
     ${path.length === 0 ? '' : '<br/>Hit: ' + path.join(',')}`;
   marker.bindPopup(details, { maxWidth: 320 });
   marker.on('add', () => updateSampleMarkerVisibility(marker));
@@ -411,7 +457,7 @@ function updateAllCoverageMarkers(dim = false) {
   coverageLayer.eachLayer(m => updateCoverageMarkerHighlight(m, { dim: dim }));
 }
 
-function updateAllEdgeVisibility(end, dimTiles = false ) {
+function updateAllEdgeVisibility(end, dimTiles = false) {
   const markersToOverride = [];
   const coverageToHighlight = [];
 
@@ -460,6 +506,7 @@ function renderNodes(nodes) {
   });
 
   // Add edges.
+  // TODO: Render on the fly instead to keep object count down?
   edgeList.forEach(e => {
     const style = {
       weight: 2,
@@ -506,21 +553,30 @@ function buildIndexes(nodes) {
       coverage = {
         id: key,
         pos: [lat, lon],
-        rcv: 0,
+        obs: 0,
+        hrd: 0,
         lost: 0,
+        snr: null,
+        rssi: null,
         ut: 0,
         lht: 0,
+        lot: 0,
         rptr: [],
       };
       hashToCoverage.set(key, coverage);
     }
 
     const path = s.path ?? [];
+    const observed = s.obs;
     const heard = path.length > 0;
-    coverage.rcv += heard ? 1 : 0;
+    coverage.obs += observed ? 1 : 0;
+    coverage.hrd += heard ? 1 : 0;
     coverage.lost += !heard ? 1 : 0;
     coverage.ut = Math.max(coverage.ut, s.time);
     coverage.lht = Math.max(coverage.lht, heard ? s.time : 0);
+    coverage.lot = Math.max(coverage.lot, observed ? s.time : 0);
+    coverage.snr = definedOr(Math.max, coverage.snr, s.snr);
+    coverage.rssi = definedOr(Math.max, coverage.rssi, s.rssi);
     path.forEach(p => {
       const lp = p.toLowerCase();
       if (!coverage.rptr.includes(lp))
@@ -550,7 +606,7 @@ function buildIndexes(nodes) {
 
   // Build top repeaters list (top 15).
   const repeaterGroups = Object.groupBy(edgeList, e => `[${e.repeater.id}] ${e.repeater.name}`);
-  const sortedGroups = Object.entries(repeaterGroups).toSorted(([,a], [,b]) => b.length - a.length);
+  const sortedGroups = Object.entries(repeaterGroups).toSorted(([, a], [, b]) => b.length - a.length);
   topRepeaters = sortedGroups.slice(0, 15).map(([id, tiles]) => [id, tiles.length]);
 }
 
