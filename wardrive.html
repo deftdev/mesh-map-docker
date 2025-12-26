@@ -66,8 +66,16 @@
 
       <!-- Bottom controls -->
       <section class="bg-slate-800/80 border border-slate-700 rounded-lg p-2 space-y-2 shadow-sm">
+        <!-- Send radio name consent -->
+        <div class="space-y-1 text-xs align-middle text-slate-300 mb-4">
+          <label class="flex gap-2">
+            <input type="checkbox" id="sendRadioNameCB">
+            Send my radio name with pings.
+          </label>
+        </div>
+
         <!-- Ignore Repeater -->
-        <div class="space-y-1 mb-4">
+        <div class="space-y-1">
           <div class="text-xs italic text-slate-400">
             If you're using a mobile repeater, ignore its id.
           </div>
@@ -81,14 +89,6 @@
               None
             </div>
           </div>
-        </div>
-
-        <!-- Send radio name consent -->
-        <div class="space-y-1 text-xs align-middle text-slate-300">
-          <label class="flex gap-2">
-            <input type="checkbox" id="sendRadioNameCB">
-            Send my radio name with pings.
-          </label>
         </div>
       </section>
 
