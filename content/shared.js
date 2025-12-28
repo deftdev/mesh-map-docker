@@ -1082,6 +1082,12 @@ function isValidLocation(p2) {
   }
   return haversineMiles(centerPos, p2) < maxDistanceMiles;
 }
+function assertValidGeohash(h2) {
+  const [lat, lon] = posFromHash(h2);
+  if (!isValidLocation([lat, lon])) {
+    throw new Error(`Hash ${h2} (${[lat, lon]}) exceeds max distance`);
+  }
+}
 function roundToFourPlaces(n2) {
   return Math.round(n2 * 1e4) / 1e4;
 }
@@ -1184,6 +1190,7 @@ export {
   export_aes as aes,
   ageInDays,
   and,
+  assertValidGeohash,
   centerPos,
   clamp,
   dayInMillis,

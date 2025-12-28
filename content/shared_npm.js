@@ -51,6 +51,13 @@ export function isValidLocation(p) {
   return haversineMiles(centerPos, p) < maxDistanceMiles;
 }
 
+export function assertValidGeohash(h) {
+  const [lat, lon] = posFromHash(h);
+  if (!isValidLocation([lat, lon])) {
+    throw new Error(`Hash ${h} (${[lat, lon]}) exceeds max distance`);
+  }
+}
+
 function roundToFourPlaces(n) {
   // Really, Javascript?
   return Math.round(n * 10000) / 10000;

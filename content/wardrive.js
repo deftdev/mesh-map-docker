@@ -11,6 +11,7 @@ import {
   centerPos,
   fadeColor,
   geo,
+  geohash6,
   geohash8,
   isValidLocation,
   maxDistanceMiles,
@@ -148,6 +149,7 @@ const state = {
   ignoredId: null, // Allows a repeater to be ignored.
   sendRadioName: false,
   pings: [],
+  rxHistory: [],
   tiles: new Map(),
   following: true,
   locationTimer: null,
@@ -829,7 +831,69 @@ function onDisconnected() {
   setStatus("Disconnected", "text-red-300");
 }
 
-function onLogRxData(frame) {
+// --- RX log handling ---
+async function trySendRxSample(packet, lastSnr, lastRssi) {
+  // The RX data is not interesting if someone is using a mobile repeater
+  // because the last hop signal is always going to look really good.
+  if (state.ignoredId != null)
+    return;
+
+  try {
+    await ensureCurrentPositionIsFresh();
+  } catch (e) {
+    console.error("RxSample: Get location failed", e);
+    return;
+  }
+
+  // Get the current position and see if a
+  // new sample is needed for this tile.
+  const pos = state.currentPos;
+  const [lat, lon] = pos;
+  if (!isValidLocation(pos)) {
+    log("RxSample: Outside coverage area");
+    return;
+  }
+  const hash = geohash6(lat, lon);
+
+  // Already sent?
+  if (state.rxHistory.includes(hash))
+    return;
+
+  // Get the last hop for inbound-packets.
+  const lastRepeater = toHex(packet.path.slice(-1)[0]);
+  if (!lastRepeater)
+    return;
+
+  // Send sample to service.
+  try {
+    const data = {
+      hash: hash,
+      info: {
+        time: Date.now(),
+        rssi: lastRssi,
+        snr: lastSnr,
+        repeater: lastRepeater
+      }
+    };
+    const dataStr = JSON.stringify(data);
+
+    // TODO: add timeout, this is "best effort" and shouldn't block.
+    log(`RxSample: sending ${dataStr}`);
+    await fetch("/put-rx-sample", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: dataStr,
+    });
+
+    // Add and keep the most recent 50.
+    state.rxHistory.push(hash);
+    state.rxHistory = state.rxHistory.slice(-50);
+  } catch (e) {
+    console.error("RxSample: Service POST failed", e);
+  }
+}
+
+async function onLogRxData(frame) {
   const lastSnr = frame.lastSnr;
   const lastRssi = frame.lastRssi;
   let hitMobileRepeater = false;
@@ -840,6 +904,8 @@ function onLogRxData(frame) {
     || packet.getPayloadType() != Packet.PAYLOAD_TYPE_GRP_TXT
     || packet.path.length == 0)
     return;
+
+  await trySendRxSample(packet, lastSnr, lastRssi);
 
   // First repeater (ignoring mobile repeater).
   let firstRepeater = toHex(packet.path[0]);

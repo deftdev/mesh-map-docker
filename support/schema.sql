@@ -4,6 +4,7 @@
 --DROP TABLE IF EXISTS repeaters;
 --DROP TABLE IF EXISTS coverage;
 --DROP TABLE IF EXISTS senders;
+--DROP TABLE IF EXISTS rx_samples;
 
 CREATE TABLE IF NOT EXISTS samples (
   hash TEXT PRIMARY KEY,
@@ -55,3 +56,11 @@ CREATE TABLE IF NOT EXISTS senders (
 CREATE INDEX IF NOT EXISTS idx_senders_hash ON senders(hash);
 CREATE INDEX IF NOT EXISTS idx_senders_name ON senders(name);
 CREATE INDEX IF NOT EXISTS idx_senders_time ON senders(time);
+
+CREATE TABLE IF NOT EXISTS rx_samples (
+  hash TEXT PRIMARY KEY,
+  time INTEGER NOT NULL,
+  samples TEXT NOT NULL DEFAULT '[]'
+    CHECK (json_valid(samples) AND json_type(samples)='array')
+);
+CREATE INDEX IF NOT EXISTS idx_rx_samples_time ON rx_samples(time);
