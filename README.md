@@ -17,13 +17,13 @@ Edit `.env` and configure the following variables:
 |----------|-------------|---------|
 | `MQTT_HOST` | The hostname or IP of your MQTT broker. | `mqtt.example.org` |
 | `MQTT_PORT` | The MQTT port (use 1883 for TCP, 8883 for TLS, 443 for WSS). | `1883` |
-| `MQTT_USERNAME` | Username for MQTT authentication. | `meshdev` |
-| `MQTT_PASSWORD` | Password for MQTT authentication. | `large_bananas` |
-| `MQTT_TOPIC` | Root topic for mesh traffic. | `msh/` |
+| `MQTT_USERNAME` | Username for MQTT authentication. | `null` |
+| `MQTT_PASSWORD` | Password for MQTT authentication. | `null` |
+| `MQTT_TOPIC` | Root topic for mesh traffic. | `null` |
 | `MQTT_USE_WEBSOCKETS` | Set to `true` to use WebSockets instead of TCP. | `false` |
 | `MQTT_USE_TLS` | Set to `true` to enable TLS encryption. | `false` |
 | `MQTT_USE_AUTH_TOKEN` | Set to `true` if your broker requires auth tokens. | `false` |
-| `CENTER_POSITION` | Map center coordinates `[LAT, LON]`. | `[47.6205, -122.3494]` |
+| `CENTER_POSITION` | Map center coordinates `[LAT, LON]` |
 | `VALID_DIST` | Max distance (miles) to show nodes from center. | `150` |
 | `SERVICE_HOST` | Internal URL for the API service (usually correct as-is). | `http://server:3000` |
 
