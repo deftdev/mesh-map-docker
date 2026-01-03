@@ -74,3 +74,32 @@ test('lerp supports rescaled output center (real)', () => {
 test('lerp supports rescaled output (inverted)', () => {
   expect(util.lerp(75, 0, 100, 100, 0)).toBe(25);
 });
+
+// --- getPathEntry ---
+test('getPathEntry with valid positive index', () => {
+  expect(util.getPathEntry([1, 2, 3], 0)).toBe("01");
+});
+
+test('getPathEntry with max valid positive index', () => {
+  expect(util.getPathEntry([1, 2, 3], 2)).toBe("03");
+});
+
+test('getPathEntry with valid negative index', () => {
+  expect(util.getPathEntry([1, 2, 3], -1)).toBe("03");
+});
+
+test('getPathEntry with max valid negative index', () => {
+  expect(util.getPathEntry([1, 2, 3], -3)).toBe("01");
+});
+
+test('getPathEntry with empty is undef', () => {
+  expect(util.getPathEntry([], -3)).toBe(undefined);
+});
+
+test('getPathEntry with invalid positive index is undef', () => {
+  expect(util.getPathEntry([1, 2, 3], 3)).toBe(undefined);
+});
+
+test('getPathEntry with invalid negative index is undef', () => {
+  expect(util.getPathEntry([1, 2, 3], -4)).toBe(undefined);
+});
