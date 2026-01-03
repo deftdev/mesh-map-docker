@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - CENTER_POSITION=${CENTER_POSITION}
+      - VALID_DIST=${VALID_DIST}
+    restart: unless-stopped
+
+  mqtt:
+    build:
+      context: .
+      dockerfile: Dockerfile.mqtt
+    depends_on:
+      - server
+    environment:
+      - SERVICE_HOST=http://server:3000
+      # MQTT variables will be passed from .env
+      - MQTT_HOST=${MQTT_HOST}
+      - MQTT_PORT=${MQTT_PORT:-443}
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - MQTT_CLIENT_ID=${MQTT_CLIENT_ID}
+      - MQTT_TOPIC=${MQTT_TOPIC:-meshcore/SEA/+/packets}
+      - MQTT_USE_WEBSOCKETS=${MQTT_USE_WEBSOCKETS:-true}
+      - MQTT_USE_TLS=${MQTT_USE_TLS:-true}
+      - MQTT_USE_AUTH_TOKEN=${MQTT_USE_AUTH_TOKEN:-false}
+      - MQTT_PUBLIC_KEY=${MQTT_PUBLIC_KEY}
+      - MQTT_PRIVATE_KEY=${MQTT_PRIVATE_KEY}
+      - CENTER_POSITION=${CENTER_POSITION}
+      - VALID_DIST=${VALID_DIST}
+      - CHANNEL_HASH=${CHANNEL_HASH}
+      - CHANNEL_SECRET=${CHANNEL_SECRET}
+      - WATCHED_OBSERVERS=${WATCHED_OBSERVERS}
+    restart: unless-stopped

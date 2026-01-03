@@ -1,28 +1,20 @@
 {
-  "mqtt_host": "<mqtt-service-host>",
-  "mqtt_port": 443,
-  "mqtt_username": "<USERNAME>",
-  "mqtt_password": "<PASSWORD>",
-  "mqtt_topic": "meshcore/SEA/+/packets",
-
-  "service_host": "https://<service-host>.pages.dev",
-  "center_position": [47.6205, -122.3494],
-  "valid_dist": 150,
-
-  "channel_hash": "e0",
-  "channel_secret": "4076c315c1ef385fa93f066027320fe5",
-
-  "watched_observers": [
-    "Discovery MQTT",
-    "N7JMV-NEW-RP",
-    "N7JMV/WA7LAW-EVERETT-RP",
-    "Powerline Trail",
-    "PugetMesh Haystack",
-    "Red Repeater",
-    "W7ITL-PTDefiance-IKOKA",
-    "WW7STR/PugetMesh Cougar",
-    "Woodward Repeater",
-    "Yaletown Repeater",
-    "YVR//Seafair"
-  ]
+  "mqtt_host": "$MQTT_HOST",
+  "mqtt_port": $MQTT_PORT,
+  "mqtt_username": "$MQTT_USERNAME",
+  "mqtt_password": "$MQTT_PASSWORD",
+  "mqtt_client_id": "$MQTT_CLIENT_ID",
+  "mqtt_topic": "$MQTT_TOPIC",
+  "mqtt_use_websockets": $MQTT_USE_WEBSOCKETS,
+  "mqtt_use_tls": $MQTT_USE_TLS,
+  "mqtt_use_auth_token": $MQTT_USE_AUTH_TOKEN,
+  "mqtt_public_key": "$MQTT_PUBLIC_KEY",
+  "mqtt_private_key": "$MQTT_PRIVATE_KEY",
+  "service_host": "$SERVICE_HOST",
+  "center_position": [$CENTER_POSITION
+  ],
+  "valid_dist": $VALID_DIST,
+  "channel_hash": "$CHANNEL_HASH",
+  "channel_secret": "$CHANNEL_SECRET",
+  "watched_observers": $WATCHED_OBSERVERS
 }

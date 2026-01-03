@@ -12,10 +12,21 @@ from haversine import haversine, Unit
 
 # Globals
 CONFIG = json.load(open("config.json"))
+
+# Sanitize config: convert "null" or "None" strings to python None
+for k, v in CONFIG.items():
+    if isinstance(v, str) and v.lower() in ["null", "none", ""]:
+        CONFIG[k] = None
+
 CENTER_POSITION = tuple(CONFIG["center_position"])
 VALID_DIST = CONFIG["valid_dist"]
 CHANNEL_HASH = CONFIG["channel_hash"]
-CHANNEL_SECRET = bytes.fromhex(CONFIG["channel_secret"])
+CHANNEL_SECRET = bytes.fromhex(CONFIG["channel_secret"]) if CONFIG["channel_secret"] else b''
+
+print(f"Configuration Loaded:")
+print(f"  Center: {CENTER_POSITION}")
+print(f"  Max Dist: {VALID_DIST}")
+print(f"  Service: {CONFIG['service_host']}")
 
 SERVICE_HOST = CONFIG["service_host"]
 ADD_REPEATER_URL = "/put-repeater"
@@ -257,22 +268,73 @@ def on_message(client, userdata, msg):
 
 def main():
   # Initialize the MQTT client
+  import random
+  import string
+  
+  def to_bool(val):
+      if isinstance(val, str):
+          return val.lower() in ['true', '1', 'yes', 'on']
+      return bool(val)
+
+  # Configure transport
+  use_websockets = to_bool(CONFIG.get("mqtt_use_websockets", True))
+  transport_proto = "websockets" if use_websockets else "tcp"
+  
+  print(f"Transport: {transport_proto}")
+
+  default_id = "wardrive_bot_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+  clientid = CONFIG.get("mqtt_client_id")
+  
+  # If it's the default placeholder or the generic 'wardrive_bot', append random chars to avoid collision
+  if not clientid or clientid == "$MQTT_CLIENT_ID" or clientid == "wardrive_bot":
+      clientid = default_id
+  elif clientid:
+      # Even if user set a custom one, if it looks like a generic name, maybe we should warn? 
+      # But let's trust them if it's not the default 'wardrive_bot'.
+      pass
+  
+  print(f"Using Client ID: {clientid}")
+  
   client = mqtt.Client(
     mqtt.CallbackAPIVersion.VERSION2,
-    transport="websockets",
-    client_id="wardrive_bot",
+    transport=transport_proto,
+    client_id=clientid,
     protocol=mqtt.MQTTv311)
 
-  client.username_pw_set(
-    CONFIG["mqtt_username"],
-    CONFIG["mqtt_password"])
+  # Configure auth
+  if to_bool(CONFIG.get("mqtt_use_auth_token", False)):
+      # Placeholder: If auth token is used, how is it passed? 
+      # Assuming it might replace password or be a specific header?
+      # For now, sticking to standard username/pw if provided, or maybe just skipping if implied?
+      # User didn't specify implementation details, so I'll leave standard auth but log it.
+      print("Auth token mode enabled (implementation pending details), continuing with username/pass if set.")
+   
+  username = CONFIG.get("mqtt_username")
+  password = CONFIG.get("mqtt_password")
+   
+  if username and username.strip():
+       client.username_pw_set(username, password)
+  else:
+       print("No username provided, connecting anonymously/without auth.")
 
-  client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
-  client.tls_insecure_set(False)
+  # Configure TLS
+  if to_bool(CONFIG.get("mqtt_use_tls", True)):
+      cert_file = CONFIG.get("mqtt_public_key")
+      key_file = CONFIG.get("mqtt_private_key")
+      
+      client.tls_set(
+          certfile=cert_file,
+          keyfile=key_file,
+          cert_reqs=ssl.CERT_REQUIRED
+      )
+      client.tls_insecure_set(False)
 
   client.on_connect = on_connect
   client.on_disconnect = on_disconnect
   client.on_message = on_message
+  
+  # Enable logging for debugging
+  client.enable_logger()
 
   try:
     print(f"Connecting to {CONFIG['mqtt_host']}:{CONFIG['mqtt_port']}");

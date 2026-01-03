@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install paho-mqtt cryptography haversine requests
+
+# Install gettext-base for envsubst
+RUN apt-get update && apt-get install -y gettext-base && rm -rf /var/lib/apt/lists/*
+
+# Copy python script
+COPY support/mqtt/wardrive-mqtt.py /app/
+COPY support/mqtt/config.json /app/config.json.template
+
+# Run envsubst to generate config.json then start app
+CMD ["/bin/sh", "-c", "envsubst < config.json.template > config.json && python wardrive-mqtt.py"]

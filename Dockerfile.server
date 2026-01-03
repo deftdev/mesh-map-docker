@@ -1,0 +1,26 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install dependencies based on usage in server.js and shared.js
+# shared.js needs ngeohash, aes-js. server.js needs express, better-sqlite3, cors, body-parser
+# Create package.json with type: module to support ES imports
+RUN echo '{"type": "module"}' > package.json
+RUN npm install express better-sqlite3 cors body-parser ngeohash aes-js colord
+
+# Copy content folder as it is required by server.js imports
+COPY content/ /app/content/
+
+# Copy static HTML files
+COPY *.html /app/
+
+# Copy server.js
+COPY server.js /app/
+
+# Create data directory
+RUN mkdir -p /data
+
+EXPOSE 3000
+
+# Run sed to inject environment variables into shared.js before starting
+CMD ["sh", "-c", "sed -i \"s/var centerPos = \\[.*\\];/var centerPos = [${CENTER_POSITION:-47.6205, -122.3494}];/g\" content/shared.js && sed -i \"s/var maxDistanceMiles = .*;/var maxDistanceMiles = ${VALID_DIST:-150};/g\" content/shared.js && node server.js"]
