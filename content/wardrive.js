@@ -13,10 +13,10 @@ import {
   geo,
   geohash6,
   geohash8,
+  getPathEntry,
   isValidLocation,
   maxDistanceMiles,
-  posFromHash,
-  toHex
+  posFromHash
 } from "/content/shared.js";
 
 // --- DOM helpers ---
@@ -364,7 +364,7 @@ function promptIgnoredId() {
     return;
   }
 
-  state.ignoredId = id ? id : null;
+  state.ignoredId = id ? id.toLowerCase() : null;
   saveSettings();
   refreshSettingsUI();
 }
@@ -617,8 +617,7 @@ async function sendPing({ auto = false } = {}) {
     const data = { lat, lon };
     if (repeat) {
       data.path = [repeat.repeater];
-      if (!repeat.hitMobileRepeater) {
-        // Don't include signal info when using a mobile repeater.
+      if (data.shouldSendRxStats) {
         data.snr = repeat.lastSnr;
         data.rssi = repeat.lastRssi;
       }
@@ -851,12 +850,7 @@ function pushRxHistory(hash) {
   state.rxHistory = state.rxHistory.slice(-10);
 }
 
-async function trySendRxSample(packet, lastSnr, lastRssi) {
-  // The RX data is not interesting if someone is using a mobile repeater
-  // because the last hop signal is always going to look really good.
-  if (state.ignoredId != null)
-    return;
-
+async function trySendRxSample(repeater, lastSnr, lastRssi) {
   try {
     await ensureCurrentPositionIsFresh();
   } catch (e) {
@@ -878,11 +872,6 @@ async function trySendRxSample(packet, lastSnr, lastRssi) {
   if (state.rxHistory.includes(hash))
     return;
 
-  // Get the last hop for inbound-packets.
-  const lastRepeater = toHex(packet.path.slice(-1)[0]);
-  if (!lastRepeater)
-    return;
-
   // Send sample to service.
   try {
     const data = {
@@ -891,7 +880,7 @@ async function trySendRxSample(packet, lastSnr, lastRssi) {
         time: Date.now(),
         rssi: lastRssi,
         snr: lastSnr,
-        repeater: lastRepeater
+        repeater: repeater
       }
     };
     const dataStr = JSON.stringify(data);
@@ -916,25 +905,41 @@ async function onLogRxData(frame) {
   let hitMobileRepeater = false;
   const packet = Packet.fromBytes(frame.raw);
 
-  // Only care about flood messages to the wardrive channel.
+  // Only care about flood group messages for RX samples.
   if (!packet.isRouteFlood()
     || packet.getPayloadType() != Packet.PAYLOAD_TYPE_GRP_TXT
     || packet.path.length == 0)
     return;
 
-  blinkRxLog();
-  await trySendRxSample(packet, lastSnr, lastRssi);
-
-  // First repeater (ignoring mobile repeater).
-  let firstRepeater = toHex(packet.path[0]);
-  if (firstRepeater === state.ignoredId) {
-    firstRepeater = toHex(packet.path[1]);
+  // Try to get the last hop, ignoring mobile repeaters.
+  let lastRepeater = getPathEntry(packet.path, -1);
+  if (lastRepeater === state.ignoredId) {
     hitMobileRepeater = true;
+    lastRepeater = getPathEntry(packet.path, -2);
   }
 
-  // No valid path.
-  if (firstRepeater === undefined)
+  // Is there a valid path?
+  if (!lastRepeater)
     return;
+
+  // Normal RSSI is around -60. Very high RSSI is usually from a mobile
+  // repeater that wasn't ignored and isn't interesting to log.
+  const rssiValid = lastRssi < -30;
+
+  // If the mobile repeater wasn't hit and the RSSI is still too high,
+  // that usually means there's another repeater *very* close by. Ignore
+  // these packet so "heard" doesn't get polluted.
+  if (!hitMobileRepeater && !rssiValid)
+    return;
+
+  // The RX data is not interesting if someone is using a mobile repeater
+  // because the last hop signal is always going to look really good.
+  // NB: It's expected to have invalid RSSI when hitMobileRepeater is true.
+  const shouldSendRxStats = !hitMobileRepeater;
+  if (shouldSendRxStats) {
+    blinkRxLog();
+    await trySendRxSample(lastRepeater, lastSnr, lastRssi);
+  }
 
   const reader = new BufferReader(packet.payload);
   const groupHash = reader.readByte();
@@ -958,11 +963,11 @@ async function onLogRxData(frame) {
     const msgText = utf8decoder.decode(msgReader.readRemainingBytes()).replace(/\0/g, '');
     repeatEmitter.dispatchEvent(new CustomEvent("repeat", {
       detail: {
-        repeater: firstRepeater,
+        repeater: lastRepeater,
         text: msgText,
-        hitMobileRepeater: hitMobileRepeater,
-        lastSnr: lastSnr,
-        lastRssi: lastRssi
+        shouldSendRxStats,
+        lastSnr,
+        lastRssi
       }
     }));
   } catch (e) {

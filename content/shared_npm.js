@@ -179,3 +179,11 @@ export function toHex(num) {
     numStr = numStr.padStart(numStr.length + 1, "0");
   return numStr;
 }
+
+export function getPathEntry(path, index) {
+  const realIndex = (index >= 0) ? index : path.length + index;
+  if (path.length === 0 || realIndex < 0 ||  realIndex >= path.length)
+    return undefined;
+
+  return toHex(path[realIndex]);
+}

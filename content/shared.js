@@ -1184,6 +1184,12 @@ function toHex(num) {
     numStr = numStr.padStart(numStr.length + 1, "0");
   return numStr;
 }
+function getPathEntry(path, index) {
+  const realIndex = index >= 0 ? index : path.length + index;
+  if (path.length === 0 || realIndex < 0 || realIndex >= path.length)
+    return void 0;
+  return toHex(path[realIndex]);
+}
 var export_aes = import_aes_js.default;
 var export_geo = import_ngeohash.default;
 export {
@@ -1201,6 +1207,7 @@ export {
   geohash6,
   geohash8,
   getOrAdd,
+  getPathEntry,
   haversineMiles,
   isValidLocation,
   lerp,
