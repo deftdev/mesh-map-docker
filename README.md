@@ -1,6 +1,6 @@
 # Mesh Map Docker
 
-A dockerized version of the [Mesh Map](https://github.com/kallanreed/mesh-map) project, designed for easy deployment of a self-hosted Meshtastic map and MQTT ingest service.
+A dockerized version of the [Mesh Map](https://github.com/kallanreed/mesh-map) project, designed for easy deployment of a self-hosted Meshcore map and MQTT ingest service.
 
 ## 🚀 Getting Started
 
@@ -15,7 +15,7 @@ Edit `.env` and configure the following variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MQTT_HOST` | The hostname or IP of your MQTT broker. | `mqtt.meshtastic.org` |
+| `MQTT_HOST` | The hostname or IP of your MQTT broker. | `mqtt.example.org` |
 | `MQTT_PORT` | The MQTT port (use 1883 for TCP, 8883 for TLS, 443 for WSS). | `1883` |
 | `MQTT_USERNAME` | Username for MQTT authentication. | `meshdev` |
 | `MQTT_PASSWORD` | Password for MQTT authentication. | `large_bananas` |
