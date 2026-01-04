@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Geohash Calculator</title>
+  <link rel="stylesheet" type="text/css" href="content/forms.css" />
+</head>
+
+<body>
+  <div>
+    <div class="form-item">
+      <label>
+        Geohash:
+        <input id="hashTxt">
+      </label>
+    </div>
+    <div class="form-item">
+      <label>
+        Lat/Lon:
+        <input id="latLonTxt">
+      </label>
+    </div>
+  </div>
+
+  <script type="module">
+    import { geohash8, parseLocation, posFromHash } from '/content/shared.js'
+
+    const hashTxtEl = document.getElementById("hashTxt");
+    const latLonEl = document.getElementById("latLonTxt");
+
+    hashTxtEl.addEventListener("change", e => {
+      const [lat, lon] = posFromHash(e.target.value);
+      latLonEl.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    });
+
+    latLonEl.addEventListener("change", e => {
+      const [latTxt, lonTxt] = e.target.value.split(/,\s*/, 2);
+      const [lat, lon] = parseLocation(latTxt, lonTxt, false);
+      const hash = geohash8(lat, lon);
+      hashTxtEl.value = hash;
+    });
+  </script>
+</body>
+
+</html>

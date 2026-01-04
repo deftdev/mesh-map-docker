@@ -1,0 +1,11 @@
+/version
+  Cache-Control: no-store, must-revalidate
+
+/wardrive
+  Cache-Control: no-store, must-revalidate
+
+/wardrive.html
+  Cache-Control: no-store, must-revalidate
+
+/content/wardrive.js
+  Cache-Control: no-store, must-revalidate

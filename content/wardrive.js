@@ -15,6 +15,7 @@ import {
   geohash8,
   getPathEntry,
   isValidLocation,
+  isValidRssi,
   maxDistanceMiles,
   posFromHash
 } from "/content/shared.js";
@@ -123,6 +124,25 @@ map.on("mousedown touchstart wheel dragstart", () => {
   state.following = false;
   updateFollowButton();
 });
+
+// --- Versioning ---
+const pageLoaded = Date.now();
+
+async function ensureLatestVersion() {
+  try {
+    const resp = await fetch("/version", { cache: "no-store" });
+    const { latest } = await resp.json();
+
+    // Was the page loaded after the latest version?
+    if (latest < pageLoaded)
+      return;
+
+    alert("A new version is available. Reloading...");
+    location.reload();
+  } catch (e) {
+    console.error("Failed to fetch version info", e);
+  }
+}
 
 // --- Logging ---
 function setStatus(text, color = null) {
@@ -250,12 +270,6 @@ function loadPingHistory() {
     state.pings = [];
     const data = localStorage.getItem(PING_HISTORY_ID_KEY);
     state.pings = JSON.parse(data || '[]');
-
-    // Upgrade ping data if needed.
-    if (state.pings.length > 0 && !state.pings[0].hasOwnProperty("hash")) {
-      state.pings = state.pings.map(x => ({ hash: geohash8(x[0], x[1]) }));
-      savePingHistory();
-    }
   } catch (e) {
     console.warn("Failed to load ping history", e);
   }
@@ -270,6 +284,11 @@ function savePingHistory() {
 }
 
 function addPingHistory(ping) {
+  // Don't add pings for the exact same location.
+  const existing = state.pings.find(p => p.hash == ping.hash);
+  if (existing)
+    return;
+
   addPingMarker(ping);
   state.pings.push(ping);
   savePingHistory();
@@ -277,6 +296,8 @@ function addPingHistory(ping) {
 
 function addPingMarker(ping) {
   function getPingColor(p) {
+    if (p.rxLog)
+      return '#A126C3' // RxLog - Violet
     if (p.observed)
       return '#398821' // Observed - Green
     if (p.heard)
@@ -287,7 +308,7 @@ function addPingMarker(ping) {
 
   const pos = posFromHash(ping.hash);
   const pingMarker = L.circleMarker(pos, {
-    radius: 4,
+    radius: ping.rxLog ? 3 : 4, // Smaller RxLog pings.
     weight: 0.75,
     color: "white",
     fillColor: getPingColor(ping),
@@ -588,11 +609,6 @@ async function sendPing({ auto = false } = {}) {
   if (state.ignoredId !== null) text += ` ${state.ignoredId}`;
 
   try {
-    // Removed: data is cheap this helps fill the RxLog map.
-    // // Don't need to send an rx-sample for this tile because
-    // // this sends a normal sample with the same data.
-    // pushRxHistory(tileId);
-
     // Send mesh message: "<lat> <lon> [<id>]".
     await state.connection.sendChannelTextMessage(state.channel.channelIdx, text);
     log("Sent MeshCore wardrive ping:", text);
@@ -617,7 +633,7 @@ async function sendPing({ auto = false } = {}) {
     const data = { lat, lon };
     if (repeat) {
       data.path = [repeat.repeater];
-      if (data.shouldSendRxStats) {
+      if (repeat.shouldSendRxStats) {
         data.snr = repeat.lastSnr;
         data.rssi = repeat.lastRssi;
       }
@@ -744,6 +760,8 @@ async function handleConnect() {
     return;
   }
 
+  await ensureLatestVersion();
+
   if (!("bluetooth" in navigator)) {
     alert("Web Bluetooth not supported in this browser.");
     return;
@@ -842,11 +860,11 @@ function blinkRxLog() {
   });
 }
 
-function pushRxHistory(hash) {
+function pushRxHistory(key) {
   // Add and keep the most recent 10. This goal is to prevent the
   // client from spamming a single tile, but also allow it to
   // eventually submit new samples after moving or refreshing.
-  state.rxHistory.push(hash);
+  state.rxHistory.push(key);
   state.rxHistory = state.rxHistory.slice(-10);
 }
 
@@ -866,10 +884,14 @@ async function trySendRxSample(repeater, lastSnr, lastRssi) {
     log("RxSample: Outside coverage area");
     return;
   }
+
+  // Track history per (tile hash, repeater id).
+  // It's interesting to know all of the repeaters that can be heard in a tile.
   const hash = geohash6(lat, lon);
+  const historyKey = `${hash}#${repeater}`;
 
   // Does this tile need a sample?
-  if (state.rxHistory.includes(hash))
+  if (state.rxHistory.includes(historyKey))
     return;
 
   // Send sample to service.
@@ -893,7 +915,8 @@ async function trySendRxSample(repeater, lastSnr, lastRssi) {
       body: dataStr,
     });
 
-    pushRxHistory(hash);
+    pushRxHistory(historyKey);
+    addPingHistory({ hash: geohash8(lat, lon), rxLog: true });
   } catch (e) {
     console.error("RxSample: Service POST failed", e);
   }
@@ -922,14 +945,10 @@ async function onLogRxData(frame) {
   if (!lastRepeater)
     return;
 
-  // Normal RSSI is around -60. Very high RSSI is usually from a mobile
-  // repeater that wasn't ignored and isn't interesting to log.
-  const rssiValid = lastRssi < -30;
-
   // If the mobile repeater wasn't hit and the RSSI is still too high,
   // that usually means there's another repeater *very* close by. Ignore
   // these packet so "heard" doesn't get polluted.
-  if (!hitMobileRepeater && !rssiValid)
+  if (!hitMobileRepeater && !isValidRssi(lastRssi))
     return;
 
   // The RX data is not interesting if someone is using a mobile repeater
