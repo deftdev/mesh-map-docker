@@ -10,6 +10,21 @@ const dbPath = process.env.DB_PATH || '/data/mesh.db';
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// Serve config.js dynamically
+app.get('/content/config.js', (req, res) => {
+    const center = process.env.CENTER_POSITION ? process.env.CENTER_POSITION.split(',').map(Number) : [47.6205, -122.3494];
+    const dist = process.env.VALID_DIST ? Number(process.env.VALID_DIST) : 150;
+    
+    res.type('application/javascript');
+    res.send(`
+        window.MESH_MAP_CONFIG = {
+            center: [${center}],
+            distance: ${dist}
+        };
+    `);
+});
+
 app.use(express.static('.'));
 
 // Initialize Database

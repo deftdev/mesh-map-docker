@@ -22,6 +22,7 @@
 
 <body class="attribution-tweak">
   <div id="map"></div>
+  <script src="content/config.js"></script>
   <script type="module" src="content/code.js"></script>
   <script type="module">
     import { refreshCoverage } from './content/code.js';
@@ -32,10 +33,10 @@
   <svg width="0" height="0" style="position:absolute">
     <defs>
       <filter id="marker-shadow" x="-50%" y="-50%" width="200%" height="200%">
-        <feDropShadow dx="1" dy="3" stdDeviation="1"
-          flood-color="black" flood-opacity="0.3"/>
+        <feDropShadow dx="1" dy="3" stdDeviation="1" flood-color="black" flood-opacity="0.3" />
       </filter>
     </defs>
   </svg>
 </body>
+
 </html>
